@@ -25,7 +25,7 @@ export async function getTable(client: DynamoDBClient, prefix: string): Promise<
         return undefined;
     }
     if (matches.length !== 1) {
-        throw new Error(`Multiple tables that match the prefix ${prefix}`);
+        throw new Error(`Multiple tables that match the prefix ${prefix} ${matches}`);
     }
     return matches[0];
 }
