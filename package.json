@@ -3,8 +3,26 @@
   "version": "4.1.5",
   "description": "A library to easily run migrations on DynamoDb with TypeScript.",
   "exports": {
-    ".": "./build/src/lib/migrateDynamo.js",
-    "./amplify": "./build/src/lib/amplify.js"
+    ".": {
+      "import": {
+        "default": "./build/src/lib/migrateDynamo.js",
+        "types": "./build/src/lib/migrateDynamo.d.ts"
+      },
+      "require": {
+        "default": "./build/src/lib/migrateDynamo.js",
+        "types": "./build/src/lib/migrateDynamo.d.ts"
+      }
+    },
+    "./amplify": {
+      "import": {
+        "default": "./build/src/lib/amplify.js",
+        "types": "./build/src/lib/amplify.d.ts"
+      },
+      "require": {
+        "default": "./build/src/lib/amplify.js",
+        "types": "./build/src/lib/amplify.d.ts"
+      }
+    }
   },
   "bin": {
     "dynamo-data-migrations": "build/src/bin/migrateDynamo.js"
