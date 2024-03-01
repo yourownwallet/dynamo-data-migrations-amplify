@@ -1,4 +1,5 @@
 import pEachSeries from 'p-each-series';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { status } from './status';
 import * as migrationsDir from '../env/migrationsDir';
 import * as migrationsDb from '../env/migrationsDb';
@@ -19,7 +20,7 @@ export async function down(profile = 'default', downShift = 1) {
     return downgraded;
 }
 
-async function executeDown(ddb: AWS.DynamoDB, file: { fileName: string; appliedAt: string }) {
+async function executeDown(ddb: DynamoDBClient, file: { fileName: string; appliedAt: string }) {
     try {
         const migration = await migrationsDir.loadFilesToBeMigrated(file.fileName);
         const migrationDown = migration.down;

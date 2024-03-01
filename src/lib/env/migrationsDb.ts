@@ -1,146 +1,133 @@
-import AWS from 'aws-sdk';
-import { Key } from 'aws-sdk/clients/dynamodb';
+import {
+    DynamoDBClient,
+    ListTablesCommand,
+    CreateTableCommand,
+    ScalarAttributeType,
+    ScanCommand,
+    PutItemCommand,
+    DeleteItemCommand,
+    KeyType,
+} from '@aws-sdk/client-dynamodb';
 import * as config from './config';
+import { getMigrationTableName } from '../amplify';
 
-export async function getDdb(profile = 'default') {
+export async function getDdb(profile = 'default'): Promise<DynamoDBClient> {
     await loadAwsConfig(profile);
-    return new AWS.DynamoDB({ apiVersion: '2012-08-10' });
+    return new DynamoDBClient({});
 }
 
-export async function configureMigrationsLogDbSchema(ddb: AWS.DynamoDB) {
+export async function configureMigrationsLogDbSchema(ddb: DynamoDBClient) {
+    const tableName = await getMigrationTableName();
     const params = {
         AttributeDefinitions: [
             {
                 AttributeName: 'FILE_NAME',
-                AttributeType: 'S',
+                AttributeType: ScalarAttributeType.S,
             },
             {
                 AttributeName: 'APPLIED_AT',
-                AttributeType: 'S',
+                AttributeType: ScalarAttributeType.S,
             },
         ],
         KeySchema: [
             {
                 AttributeName: 'FILE_NAME',
-                KeyType: 'HASH',
+                KeyType: KeyType.HASH,
             },
             {
                 AttributeName: 'APPLIED_AT',
-                KeyType: 'RANGE',
+                KeyType: KeyType.RANGE,
             },
         ],
         ProvisionedThroughput: {
             ReadCapacityUnits: 5,
             WriteCapacityUnits: 5,
         },
-        TableName: 'MIGRATIONS_LOG_DB',
+        TableName: tableName,
         StreamSpecification: {
             StreamEnabled: false,
         },
     };
-    ddb.createTable(params, function callback(err) {
-        if (err) {
-            throw err;
-        }
-    });
-
-    const migrationParam = {
-        TableName: 'MIGRATIONS_LOG_DB',
-    };
-    return new Promise((resolve, reject) => {
-        ddb.waitFor('tableExists', migrationParam, async function callback(err, data) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(data);
-            }
-        });
-    });
+    await ddb.send(new CreateTableCommand(params));
 }
 
-export async function addMigrationToMigrationsLogDb(item: { fileName: string; appliedAt: string }, ddb: AWS.DynamoDB) {
+export async function addMigrationToMigrationsLogDb(
+    item: { fileName: string; appliedAt: string },
+    ddb: DynamoDBClient,
+) {
+    const migrationTableName = await getMigrationTableName();
     const params = {
-        TableName: 'MIGRATIONS_LOG_DB',
+        TableName: migrationTableName,
         Item: {
             FILE_NAME: { S: item.fileName },
             APPLIED_AT: { S: item.appliedAt },
         },
     };
 
-    // Call DynamoDB to add the item to the table
-
-    return new Promise((resolve, reject) => {
-        ddb.putItem(params, async function callback(err, data) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(data);
-            }
-        });
-    });
+    return ddb.send(new PutItemCommand(params));
 }
 
 export async function deleteMigrationFromMigrationsLogDb(
     item: { fileName: string; appliedAt: string },
-    ddb: AWS.DynamoDB,
+    ddb: DynamoDBClient,
 ) {
+    const migrationTableName = await getMigrationTableName();
     const params = {
-        TableName: 'MIGRATIONS_LOG_DB',
+        TableName: migrationTableName,
         Key: {
             FILE_NAME: { S: item.fileName },
             APPLIED_AT: { S: item.appliedAt },
         },
     };
-
-    return new Promise((resolve, reject) => {
-        ddb.deleteItem(params, function callback(err, data) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(data);
-            }
-        });
-    });
+    return ddb.send(new DeleteItemCommand(params));
 }
 
-export async function doesMigrationsLogDbExists(ddb: AWS.DynamoDB) {
-    const params = {
-        TableName: 'MIGRATIONS_LOG_DB',
-    };
-    return new Promise((resolve) => {
-        ddb.describeTable(params, function callback(err) {
-            if (err) {
-                resolve(false);
-            } else {
-                resolve(true);
-            }
-        });
-    });
+export async function doesMigrationsLogDbExists(ddb: DynamoDBClient) {
+    const migrationTableName = await getMigrationTableName();
+
+    let tables = await ddb.send(new ListTablesCommand({}));
+    let logDB = tables.TableNames?.filter((table) => table === migrationTableName);
+    while (
+        logDB?.length === 0 &&
+        tables.LastEvaluatedTableName !== null &&
+        tables.LastEvaluatedTableName !== undefined
+    ) {
+        tables = await ddb.send(new ListTablesCommand({ ExclusiveStartTableName: tables.LastEvaluatedTableName }));
+        logDB = tables.TableNames?.filter((table) => table === migrationTableName);
+    }
+
+    if (logDB === null || logDB === undefined || logDB.length === 0) {
+        return false;
+    }
+    if (logDB.length !== 1) {
+        throw new Error('Multiple potential matches for the migration log db');
+    }
+    return true;
 }
 
-export async function getAllMigrations(ddb: AWS.DynamoDB) {
+export async function getAllMigrations(ddb: DynamoDBClient) {
     const migrations: { FILE_NAME?: string; APPLIED_AT?: string }[] = [];
-    const recursiveProcess = async (lastEvaluatedKey?: Key) => {
-        const params = {
-            TableName: 'MIGRATIONS_LOG_DB',
-            ExclusiveStartKey: lastEvaluatedKey,
-        };
+    const migrationLogTableName = await getMigrationTableName();
+    let migrationScan = await ddb.send(new ScanCommand({ TableName: migrationLogTableName }));
+    for (const item of migrationScan.Items ?? []) {
+        migrations.push({
+            FILE_NAME: item.FILE_NAME.S,
+            APPLIED_AT: item.APPLIED_AT.S,
+        });
+    }
 
-        const { Items, LastEvaluatedKey } = await ddb.scan(params).promise();
-        if (Items)
-            migrations.push(
-                ...Items.map((item) => {
-                    return {
-                        FILE_NAME: item.FILE_NAME.S,
-                        APPLIED_AT: item.APPLIED_AT.S,
-                    };
-                }),
-            );
+    while (migrationScan.LastEvaluatedKey != null) {
+        migrationScan = await ddb.send(
+            new ScanCommand({ TableName: migrationLogTableName, ExclusiveStartKey: migrationScan.LastEvaluatedKey }),
+        );
+        for (const item of migrationScan.Items ?? []) {
+            migrations.push({
+                FILE_NAME: item.FILE_NAME.S,
+                APPLIED_AT: item.APPLIED_AT.S,
+            });
+        }
+    }
 
-        if (LastEvaluatedKey) await recursiveProcess(LastEvaluatedKey);
-    };
-
-    await recursiveProcess();
     return migrations;
 }
 
@@ -156,18 +143,18 @@ async function loadAwsConfig(inputProfile: string) {
 
     // Populate  region
     if (profileConfig && profileConfig.region) {
-        AWS.config.region = profileConfig.region;
+        process.env.AWS_REGION = profileConfig.region;
     } else {
         throw new Error(`Please provide region for profile:${inputProfile}`);
     }
 
     if (profileConfig && profileConfig.accessKeyId && profileConfig.secretAccessKey) {
-        AWS.config.update({
-            accessKeyId: profileConfig.accessKeyId,
-            secretAccessKey: profileConfig.secretAccessKey,
-        });
+        process.env.AWS_ACCESS_KEY_ID = profileConfig.accessKeyId;
+        process.env.AWS_SECRET_ACCESS_KEY = profileConfig.secretAccessKey;
+        delete process.env.AWS_PROFILE;
     } else {
         // Load config from shared credentials file if present
-        AWS.config.credentials = new AWS.SharedIniFileCredentials({ profile: inputProfile });
+        process.env.AWS_PROFILE = inputProfile;
+        // AWS.config.credentials = new AWS.SharedIniFileCredentials({ profile: inputProfile });
     }
 }

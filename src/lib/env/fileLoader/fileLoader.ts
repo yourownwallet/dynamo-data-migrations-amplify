@@ -1,6 +1,8 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+
 export interface Migration {
-    up(ddb: AWS.DynamoDB): Promise<void>;
-    down(ddb: AWS.DynamoDB): Promise<void>;
+    up(ddb: DynamoDBClient): Promise<void>;
+    down(ddb: DynamoDBClient): Promise<void>;
 }
 
 export abstract class FileLoader {

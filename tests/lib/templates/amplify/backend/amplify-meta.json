@@ -1,0 +1,9 @@
+{
+  "api": {
+    "testAPI": {
+      "output": {
+        "GraphQLAPIIdOutput": "apiid"
+      }
+    }
+  }
+}
