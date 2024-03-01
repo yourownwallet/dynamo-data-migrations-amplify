@@ -20,7 +20,7 @@ export async function listTables(client: DynamoDBClient): Promise<string[]> {
 
 export async function getTable(client: DynamoDBClient, prefix: string): Promise<string | undefined> {
     const tables = await listTablesInEnv(client);
-    const matches = tables.filter((name) => name.startsWith(name));
+    const matches = tables.filter((name) => name.startsWith(prefix));
     if (matches.length === 0) {
         return undefined;
     }
