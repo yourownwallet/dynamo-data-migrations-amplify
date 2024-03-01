@@ -1,9 +1,9 @@
-import AWS from 'aws-sdk';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
-export async function up(ddb: AWS.DynamoDB) {
+export async function up(ddb: DynamoDBClient) {
     // TODO write your migration here.
 }
 
-export async function down(ddb: AWS.DynamoDB) {
+export async function down(ddb: DynamoDBClient) {
     // TODO write the statements to rollback your migration 
 }
