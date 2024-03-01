@@ -7,7 +7,7 @@ export async function listTables(client: DynamoDBClient): Promise<string[]> {
     const result = await client.send(new ListTablesCommand({}));
     const envName = await safeGitRootDir().then((gitRoot) => getCurrentAmplifyEnvironment(gitRoot));
     const matches = result.TableNames?.filter((name) => name.endsWith(envName)).map((name) =>
-        name.match(/(?<tableName>[A-Za-z]+)-(?<appId>[A-Za-z]+)-(?<env>[A-Za-z]+)/),
+        name.match(/(?<tableName>[A-Za-z]+)-(?<appId>[\dA-Za-z]+)-(?<env>[A-Za-z]+)/),
     );
     if (matches == null) {
         return [];
