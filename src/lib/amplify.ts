@@ -3,6 +3,7 @@ import { DynamoDBClient, ListTablesCommand } from '@aws-sdk/client-dynamodb';
 import path from 'path';
 import fs from 'fs/promises';
 
+const tableNamePattern = /(?<tableName>[A-Za-z]+)-(?<appId>[\dA-Za-z]+)-(?<env>[A-Za-z]+)/;
 async function listTablesInEnv(client: DynamoDBClient): Promise<string[]> {
     const result = await client.send(new ListTablesCommand({}));
     const envName = await safeGitRootDir().then((gitRoot) => getCurrentAmplifyEnvironment(gitRoot));
@@ -11,21 +12,27 @@ async function listTablesInEnv(client: DynamoDBClient): Promise<string[]> {
 
 export async function listTables(client: DynamoDBClient): Promise<string[]> {
     const tables = await listTablesInEnv(client);
-    const matches = tables.map((name) => name.match(/(?<tableName>[A-Za-z]+)-(?<appId>[\dA-Za-z]+)-(?<env>[A-Za-z]+)/));
+    const matches = tables.map((name) => name.match(tableNamePattern));
     if (matches == null) {
         return [];
     }
     return matches.filter((match) => match != null && match.groups != null).map((match) => match!.groups!.tableName);
 }
 
-export async function getTable(client: DynamoDBClient, prefix: string): Promise<string | undefined> {
+export async function getTable(client: DynamoDBClient, name: string): Promise<string | undefined> {
     const tables = await listTablesInEnv(client);
-    const matches = tables.filter((name) => name.startsWith(prefix));
+    const matches = tables.filter((fullName) => {
+        const match = tableNamePattern.exec(fullName);
+        if (match && match.groups) {
+            return match.groups.tableName === name;
+        }
+        return false;
+    });
     if (matches.length === 0) {
         return undefined;
     }
     if (matches.length !== 1) {
-        throw new Error(`Multiple tables that match the prefix ${prefix} ${matches}`);
+        throw new Error(`Multiple tables that match the name ${name} ${matches}`);
     }
     return matches[0];
 }
