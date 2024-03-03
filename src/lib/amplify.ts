@@ -115,3 +115,26 @@ export async function scanAll(
     await runScan();
     return accumulatedResults;
 }
+
+export async function scanFirst(
+    client: DynamoDBClient,
+    parameters: ScanCommandInput,
+): Promise<Record<string, AttributeValue> | undefined> {
+    const runScan = async (
+        exclusiveStartKey?: Record<string, AttributeValue>,
+    ): Promise<Record<string, AttributeValue> | undefined> => {
+        const p = exclusiveStartKey == null ? parameters : { ...parameters, ExclusiveStartKey: exclusiveStartKey };
+        const scanResult = await client.send(new ScanCommand(p));
+        if (scanResult.Items != null) {
+            const result = scanResult.Items.at(0);
+            if (result != null) {
+                return result;
+            }
+        }
+        if (scanResult.LastEvaluatedKey != null) {
+            return runScan(scanResult.LastEvaluatedKey);
+        }
+        return undefined;
+    };
+    return runScan();
+}
