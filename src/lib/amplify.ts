@@ -1,5 +1,13 @@
 import gitRootDir from 'git-root-dir';
-import { DynamoDBClient, ListTablesCommand } from '@aws-sdk/client-dynamodb';
+import {
+    DynamoDBClient,
+    ListTablesCommand,
+    AttributeValue,
+    QueryCommand,
+    ScanCommand,
+    QueryCommandInput,
+    ScanCommandInput,
+} from '@aws-sdk/client-dynamodb';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -68,4 +76,42 @@ export async function getMigrationTableName() {
     const amplifyEnv = await getCurrentAmplifyEnvironment(gitRoot!);
     const apiId = await getAPIId(gitRoot!);
     return `MIGRATIONS_LOG_DB-${apiId}-${amplifyEnv}`;
+}
+
+export async function queryAll(
+    client: DynamoDBClient,
+    parameters: QueryCommandInput,
+): Promise<Record<string, AttributeValue>[]> {
+    const accumulatedResults: Record<string, AttributeValue>[] = [];
+    const runScan = async (exclusiveStartKey?: Record<string, AttributeValue>) => {
+        const p = exclusiveStartKey == null ? parameters : { ...parameters, ExclusiveStartKey: exclusiveStartKey };
+        const queryResult = await client.send(new QueryCommand(p));
+        if (queryResult.Items != null) {
+            accumulatedResults.push(...queryResult.Items);
+        }
+        if (queryResult.LastEvaluatedKey != null) {
+            await runScan(queryResult.LastEvaluatedKey);
+        }
+    };
+    await runScan();
+    return accumulatedResults;
+}
+
+export async function scanAll(
+    client: DynamoDBClient,
+    parameters: ScanCommandInput,
+): Promise<Record<string, AttributeValue>[]> {
+    const accumulatedResults: Record<string, AttributeValue>[] = [];
+    const runScan = async (exclusiveStartKey?: Record<string, AttributeValue>) => {
+        const p = exclusiveStartKey == null ? parameters : { ...parameters, ExclusiveStartKey: exclusiveStartKey };
+        const scanResult = await client.send(new ScanCommand(p));
+        if (scanResult.Items != null) {
+            accumulatedResults.push(...scanResult.Items);
+        }
+        if (scanResult.LastEvaluatedKey != null) {
+            await runScan(scanResult.LastEvaluatedKey);
+        }
+    };
+    await runScan();
+    return accumulatedResults;
 }
