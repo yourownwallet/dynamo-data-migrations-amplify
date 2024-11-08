@@ -13,9 +13,18 @@ import fs from 'fs/promises';
 
 const tableNamePattern = /(?<tableName>[A-Za-z]+)-(?<appId>[\dA-Za-z]+)-(?<env>[A-Za-z]+)/;
 async function listTablesInEnv(client: DynamoDBClient): Promise<string[]> {
-    const result = await client.send(new ListTablesCommand({}));
+    const allTableNames = [];
+    let nextResult = await client.send(new ListTablesCommand({}));
+    allTableNames.push(...(nextResult.TableNames ?? []));
+    while (nextResult.LastEvaluatedTableName != null) {
+        nextResult = await client.send(
+            new ListTablesCommand({ ExclusiveStartTableName: nextResult.LastEvaluatedTableName }),
+        );
+        allTableNames.push(...(nextResult.TableNames ?? []));
+    }
+
     const envName = await safeGitRootDir().then((gitRoot) => getCurrentAmplifyEnvironment(gitRoot));
-    return result.TableNames?.filter((name) => name.endsWith(envName)) ?? [];
+    return allTableNames.filter((name) => name.endsWith(envName)) ?? [];
 }
 
 export async function listTables(client: DynamoDBClient): Promise<string[]> {
